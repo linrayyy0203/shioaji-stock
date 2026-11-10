@@ -10,3 +10,6 @@ venv/
 # Python 暫存
 __pycache__/
 *.pyc
+
+# shioaji 自動產生的執行紀錄
+shioaji.log
