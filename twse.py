@@ -6,6 +6,7 @@
 - daily(code, start, end)：日線歷史（自動判斷上市/上櫃）
 """
 import json
+import time
 import urllib.parse
 import urllib.request
 from datetime import date, datetime
@@ -89,14 +90,27 @@ def realtime(codes):
 # ---------- 日線歷史 ----------
 
 def _month_tse(code, year, month):
-    """上市單月日線，回傳 list of (date, o, h, l, c, 張)；非上市或無資料回 None。"""
+    """上市單月日線，回傳 list of (date, o, h, l, c, 張)；非上市或無資料回 None。
+
+    證交所 STOCK_DAY 有流量限制，連續查詢可能被暫時擋下（stat 非 OK）。
+    這裡遇到被擋就自動重試（遞增等待），真的查不到才回 None。
+    """
     url = ("https://www.twse.com.tw/exchangeReport/STOCK_DAY"
            f"?response=json&date={year}{month:02d}01&stockNo={code}")
-    try:
-        data = _get(url)
-    except Exception:
-        return None
-    if data.get("stat") != "OK" or not data.get("data"):
+    data = None
+    for attempt in range(6):
+        try:
+            data = _get(url)
+        except Exception:
+            data = None            # 被限流時常回傳非 JSON 錯誤頁 → 當作需重試
+        if isinstance(data, dict):
+            stat = data.get("stat", "")
+            if stat == "OK":
+                break
+            if "沒有" in stat or "查無" in stat:   # 真的查無此上市代號 → 交給櫃買
+                return None
+        time.sleep(2 * (attempt + 1))   # 例外或被限流：等一下再試
+    if not isinstance(data, dict) or data.get("stat") != "OK" or not data.get("data"):
         return None
     rows = []
     for r in data["data"]:
@@ -168,6 +182,7 @@ def daily(code, start, end):
                 rows.append(r)
 
         cur = date(cur.year + 1, 1, 1) if cur.month == 12 else date(cur.year, cur.month + 1, 1)
+        time.sleep(0.5)   # 禮貌間隔，降低被證交所限流的機會
 
     rows.sort(key=lambda r: r[0])
     return rows
