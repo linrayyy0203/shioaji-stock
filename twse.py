@@ -186,3 +186,132 @@ def daily(code, start, end):
 
     rows.sort(key=lambda r: r[0])
     return rows
+
+
+# ---------- 全市場當日 OHLC 與漲跌停偵測 ----------
+
+import math as _math
+import re as _re
+
+_MI_URL = ("https://www.twse.com.tw/exchangeReport/MI_INDEX"
+           "?response=json&type=ALL&date={}")
+
+
+def _tick(p):
+    """台股股票的升降單位（檔位）。"""
+    if p < 10:
+        return 0.01
+    if p < 50:
+        return 0.05
+    if p < 100:
+        return 0.1
+    if p < 500:
+        return 0.5
+    if p < 1000:
+        return 1.0
+    return 5.0
+
+
+def limit_up(prev_close):
+    """漲停價＝昨收 ×1.1，無條件捨去到檔位。"""
+    t = _tick(prev_close * 1.1)
+    return round(_math.floor(prev_close * 1.1 / t + 1e-9) * t, 2)
+
+
+def limit_down(prev_close):
+    """跌停價＝昨收 ×0.9，無條件進位到檔位。"""
+    t = _tick(prev_close * 0.9)
+    return round(_math.ceil(prev_close * 0.9 / t - 1e-9) * t, 2)
+
+
+def market_ohlc(day=None):
+    """
+    抓某日「全部上市個股」的 OHLC。回傳 dict：
+      code -> {name, open, high, low, close, prev}
+    day 可為 'YYYY-MM-DD' 或 date，預設今天。查無資料回空 dict。
+    """
+    if day is None:
+        d = date.today()
+    elif isinstance(day, date):
+        d = day
+    else:
+        d = datetime.strptime(day, "%Y-%m-%d").date()
+    url = _MI_URL.format(f"{d.year}{d.month:02d}{d.day:02d}")
+
+    data = None
+    for attempt in range(6):
+        try:
+            data = _get(url)           # 被限流時常回非 JSON → 丟例外 → 重試
+        except Exception:
+            data = None
+        if isinstance(data, dict) and data.get("stat") == "OK":
+            break
+        time.sleep(2 * (attempt + 1))
+    if not isinstance(data, dict) or data.get("stat") != "OK":
+        return {}
+
+    table = None
+    for t in data.get("tables", []):
+        if "每日收盤行情" in t.get("title", ""):
+            table = t
+            break
+    if not table:
+        return {}
+
+    def num(x):
+        x = _re.sub("<[^>]+>", "", str(x)).replace(",", "").strip()
+        try:
+            return float(x)
+        except ValueError:
+            return None
+
+    out = {}
+    for r in table["data"]:
+        code = r[0].strip()
+        o, h, l, c = num(r[5]), num(r[6]), num(r[7]), num(r[8])
+        sign = _re.sub("<[^>]+>", "", str(r[9]))      # 漲跌 +/-（可能含色碼）
+        diff = num(r[10])
+        if c is None or diff is None:
+            continue
+        signed = -diff if "-" in sign else diff
+        out[code] = {
+            "name": r[1].strip(),
+            "open": o, "high": h, "low": l, "close": c,
+            "prev": round(c - signed, 2),
+        }
+    return out
+
+
+def limit_status(info):
+    """
+    依單日 OHLC 判斷漲跌停狀態。
+    回傳 dict：up/down 漲跌停價、狀態字串、是否曾觸及、收盤是否鎖住。
+    狀態：鎖漲停 / 漲停打開 / 曾觸漲停 / 鎖跌停 / 跌停打開 / 正常。
+    """
+    prev = info["prev"]
+    hi, lo, c = info["high"], info["low"], info["close"]
+    up, dn = limit_up(prev), limit_down(prev)
+    eq = lambda a, b: a is not None and abs(a - b) < 1e-6
+
+    touched_up = eq(hi, up)
+    locked_up = eq(c, up)
+    touched_dn = eq(lo, dn)
+    locked_dn = eq(c, dn)
+
+    if locked_up:
+        status = "鎖漲停"
+    elif touched_up:
+        status = "漲停打開"       # 盤中觸漲停、收盤沒鎖住
+    elif locked_dn:
+        status = "鎖跌停"
+    elif touched_dn:
+        status = "跌停打開"
+    else:
+        status = "正常"
+
+    return {
+        "limit_up": up, "limit_down": dn,
+        "status": status,
+        "touched_up": touched_up, "locked_up": locked_up,
+        "touched_down": touched_dn, "locked_down": locked_dn,
+    }

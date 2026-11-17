@@ -9,6 +9,7 @@
 - `fetch_quote.py` — 抓即時報價快照（上市、上櫃、ETF 都支援）
 - `fetch_kbars.py` — 抓日線歷史，存成 CSV
 - `fetch_future.py` — 抓個股／ETF 期貨每日各月成交量（期交所）
+- `check_limit.py` — 偵測個股漲停／跌停是「鎖死」還是「打開」
 - `twse.py` — 共用的證交所／櫃買抓取邏輯
 - `taifex.py` — 共用的期交所期貨抓取邏輯
 - `common.py` — （選用）永豐 Shioaji 登入邏輯，給想在本機抓即時 tick／分鐘線的進階用途
@@ -41,6 +42,12 @@ python3 -m venv venv
 ```bash
 ./venv/bin/python fetch_future.py 0052
 ./venv/bin/python fetch_future.py 2330 2026-11-11
+```
+
+偵測漲停／跌停是「鎖死」還是「盤中打開」（用當日開高低收判斷）：
+```bash
+./venv/bin/python check_limit.py 2454 3443 3661
+./venv/bin/python check_limit.py 2454 3443 3661 2026-11-13
 ```
 
 ## 關於永豐 Shioaji（選用）
