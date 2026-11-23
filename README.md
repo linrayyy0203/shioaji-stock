@@ -10,7 +10,9 @@
 - `fetch_kbars.py` — 抓日線歷史，存成 CSV
 - `fetch_future.py` — 抓個股／ETF 期貨每日各月成交量（期交所）
 - `check_limit.py` — 偵測個股漲停／跌停是「鎖死」還是「打開」
+- `fetch_broker.py` — 券商分點進出（分點籌碼）：某分點買賣超了哪些股票
 - `twse.py` — 共用的證交所／櫃買抓取邏輯
+- `broker.py` — 共用的券商分點抓取邏輯（富邦理財網）
 - `taifex.py` — 共用的期交所期貨抓取邏輯
 - `common.py` — （選用）永豐 Shioaji 登入邏輯，給想在本機抓即時 tick／分鐘線的進階用途
 
@@ -49,6 +51,15 @@ python3 -m venv venv
 ./venv/bin/python check_limit.py 2454 3443 3661
 ./venv/bin/python check_limit.py 2454 3443 3661 2026-11-13
 ```
+
+券商分點進出（分點籌碼，參數是「券商代號」不是股票代號；9600＝富邦）：
+```bash
+./venv/bin/python fetch_broker.py 9600        # 總公司分點
+./venv/bin/python fetch_broker.py 9600 9602   # 指定分點
+```
+
+> 關於分點籌碼的其他來源：證交所官方 BSR 券商買賣日報表（`bsr.twse.com.tw`，有驗證碼）、
+> Goodinfo!、FinMind、富果 Fugle API、TEJ 等。Shioaji 本身不提供分點資料。
 
 ## 關於永豐 Shioaji（選用）
 
